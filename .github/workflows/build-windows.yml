@@ -1,33 +1,49 @@
 name: Build Windows EXE
 
 on:
-  workflow_dispatch: # 允许在网页上手动点击触发
+  workflow_dispatch: # 允许在网页上手动点击触发（方便你日常测试）
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master" ] # 平时改代码推送到主分支时触发
+    tags:
+      - 'v*' # 只有当你推送类似 v1.0.0 的标签时，才会触发下面的 Release 发布
 
 jobs:
   build:
     runs-on: windows-latest
     
     steps:
-      - name: Checkout code
+      - name: 1. Checkout code (拉取代码)
         uses: actions/checkout@v4
 
-      - name: Setup Flutter
+      - name: 2. Setup Flutter (配置Flutter环境)
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
+      - name: 3. Install dependencies (安装依赖)
         run: flutter pub get
 
-      - name: Build Windows Release
+      - name: 4. Build Windows Release (编译Windows版本)
         run: flutter build windows --release
 
-      - name: Upload Artifact
+      # 临时备份（已删除 7 天限制，默认保留 90 天，仅用于你平时测试）
+      - name: 5. Upload Artifact (上传临时测试文件)
         uses: actions/upload-artifact@v4
         with:
-          name: ClickMate-Windows-Release
+          name: ClickMate-Windows-临时测试版
           path: build/windows/x64/runner/Release/
-          retention-days: 7
+
+      # 把编译出来的文件夹压缩成一个 zip 文件
+      - name: 6. Zip Release Folder (压缩编译产物)
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ClickMate-Windows.zip
+
+      # 永久发布到 Release（只有当推送 v* 标签时才执行）
+      - name: 7. Create Release and Upload Asset (发布到Release并上传附件)
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v') # 核心开关：只有网页上创建了 v* 的发布，这一步才会运行
+        with:
+          files: ClickMate-Windows.zip # 上传刚才压缩好的 zip
+          generate_release_notes: true # 自动生成更新日志
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub 自动提供，无需自己配置
